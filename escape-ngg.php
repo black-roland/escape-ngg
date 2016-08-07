@@ -6,15 +6,15 @@
  * License: GPLv3
  * Version: 1.0
  *
- * This plugin will scan through all your posts and pages for the [nggallery] shortcode. 
- * It will loop through all images associated with that gallery and recreate them as native 
- * WordPress attachments instead. Finally it will replace the [nggallery] shortcode with 
+ * This plugin will scan through all your posts and pages for the [nggallery] shortcode.
+ * It will loop through all images associated with that gallery and recreate them as native
+ * WordPress attachments instead. Finally it will replace the [nggallery] shortcode with
  * the [gallery] shortcode native to WordPress.
  *
  * Instructions: Backup! Activate the plugin and browse to yourdomain.com/wp-admin/?escape_ngg_please=1
  * When you're done you can delete the gallery dir, and the wp_ngg_* tables in your database. Keep the backups though.
  *
- * Limitations: 
+ * Limitations:
  * - doesn't work with shortcodes other than [nggallery]
  * - doesn't work when more than one gallery on page
  *
@@ -26,9 +26,9 @@ if ( defined( 'WP_CLI' ) && WP_CLI )
 
 
 /**
- * 
- * 
- * @package 
+ *
+ *
+ * @package
  **/
 class Escape_NextGen_Gallery {
 
@@ -62,9 +62,9 @@ class Escape_NextGen_Gallery {
 
 	/**
 	 * Singleton stuff.
-	 * 
+	 *
 	 * @access @static
-	 * 
+	 *
 	 * @return Escape_NextGen_Gallery object
 	 */
 	static public function init() {
@@ -116,7 +116,7 @@ class Escape_NextGen_Gallery {
 		set_time_limit( 600 );
 
 		$post_ids = $this->get_post_ids( $limit );
-		
+
 		foreach ( $post_ids as $post_id ) {
 			$this->process_post( $post_id );
 		}
@@ -136,10 +136,10 @@ class Escape_NextGen_Gallery {
 	// =========
 
 	/**
-	 * 
 	 *
 	 *
-	 * @return int A count of posts with 
+	 *
+	 * @return int A count of posts with
 	 * @author Simon Wheatley
 	 **/
 	public function count() {
@@ -156,15 +156,15 @@ class Escape_NextGen_Gallery {
 	public function process_post( $post_id ) {
 		global $wpdb;
 		$post = get_post( $post_id );
-		$matches = null;
+		$matches;
 
-		preg_match( '#nggallery id(\s)*="?(\s)*(?P<id>\d+)#i', $post->post_content, $matches );
-		if ( ! isset( $matches['id'] ) ) {
-			$this->warnings[] = sprintf( "Could not match gallery id in %d", $post->ID );
-			return;
-		}
+		preg_match_all("#<img.*http(s)?://(.*)?".NGG_ATTACH_TO_POST_SLUG."(=|/)preview(/|&|&amp;)id(=|--)(\\d+).*?>#mi", $post->post_content, $matches, PREG_SET_ORDER);
+		$displayed_gallery_id = $matches[0][6];
+		$mapper = C_Displayed_Gallery_Mapper::get_instance();
+		$displayed_gallery = $mapper->find($displayed_gallery_id, TRUE);
+		$gallery_id = $displayed_gallery->container_ids[0];
 
-		// If there are existing images attached the post, 
+		// If there are existing images attached the post,
 		// let's remember to exclude them from our new gallery.
 		$existing_attachments_ids = get_posts( array(
 			'post_type' => 'attachment',
@@ -174,7 +174,6 @@ class Escape_NextGen_Gallery {
 			'fields' => 'ids',
 		) );
 
-		$gallery_id = $matches['id'];
 		$path = $wpdb->get_row( "SELECT * FROM {$wpdb->prefix}ngg_gallery WHERE gid = ". intval( $gallery_id ), ARRAY_A  );
 		$images = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}ngg_pictures WHERE galleryid = ". intval( $gallery_id ) . " ORDER BY sortorder, pid ASC" );
 
@@ -186,7 +185,6 @@ class Escape_NextGen_Gallery {
 		foreach ( $images as $image ) {
 			$url = home_url( trailingslashit( $path['path'] ) . $image->filename );
 			$url = apply_filters( 'engg_image_url', $url, $path['path'], $image->filename );
-			
 
 			// Let's use a hash trick here to find our attachment post after it's been sideloaded.
 			$hash = md5( 'attachment-hash' . $url . $image->description . time() . rand( 1, 999 ) );
@@ -243,11 +241,11 @@ class Escape_NextGen_Gallery {
 
 		// Booyaga!
 		$pristine_content = $post->post_content;
-		$post->post_content = preg_replace( '#\[nggallery[^\]]*\]#i', $gallery, $post->post_content );
+		$post->post_content = preg_replace( '#<img.*id(=|--)(\\d+).*?>#mi', $gallery, $post->post_content );
 		$post->post_content = apply_filters( 'engg_post_content', $post->post_content, $pristine_content, $attr, $post, $gallery );
 		wp_update_post( $post );
 		$this->posts_count++;
-		$this->infos[] = sprintf( "Updated post %d", $post->ID );	
+		$this->infos[] = sprintf( "Updated post %d", $post->ID );
 	}
 
 	/**
@@ -257,16 +255,16 @@ class Escape_NextGen_Gallery {
 	 **/
 	public function get_post_ids( $limit = -1 ) {
 		$args = array(
-			's'           => '[nggallery',
+			's'           => 'ngg_displayed_gallery',
 			'post_type'   => array( 'post', 'page' ),
 			'post_status' => 'any',
 			'nopaging'    => true,
 			'fields'      => 'ids',
 			'posts_per_page' => $limit
 		);
-		
+
 		$args = apply_filters( 'escape_ngg_query_args', $args );
-		
+
 		$query = new WP_Query( $args );
 		return $query->posts;
 	}
